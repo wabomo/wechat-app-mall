@@ -8,16 +8,9 @@ Page({
     userInfo: {}
   },
   goToIndex:function(){
-    if (app.globalData.isConnected) {
-      wx.switchTab({
-        url: '/pages/index/index',
-      });
-    } else {
-      wx.showToast({
-        title: '当前无网络',
-        icon: 'none',
-      })
-    }
+    wx.switchTab({
+      url: '/pages/index/index',
+    });
   },
   onLoad:function(){
     var that = this

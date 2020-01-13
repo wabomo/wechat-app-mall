@@ -19,33 +19,29 @@ Page({
         swiperCurrent: e.detail.current  
     })  
   },
-  onLoad: function (e) {
+  onLoad: function (e) {    
     this.data.id = e.id;
     this.data.kjId = e.kjId;
     this.data.joiner = e.joiner;
-  },
-  onShow: function () {
-    var that = this
+    var that = this;
     wx.request({
-      url: 'https://api.it120.cc/' + app.globalData.subDomain + '/shop/goods/detail',
+      url: 'https://api.it120.cc/'+ app.globalData.subDomain +'/shop/goods/detail',
       data: {
-        id: that.data.id
+        id: e.id
       },
-      success: function (res) {
-        if (res.data.code == 0) {
-          that.data.goodsDetail = res.data.data;
-          if (res.data.data.basicInfo.videoId) {
-            that.getVideoSrc(res.data.data.basicInfo.videoId);
-          }
-          that.setData({
-            goodsDetail: res.data.data
-          });
-          WxParse.wxParse('article', 'html', res.data.data.content, that, 5);
-          that.getKanjiaInfo(that.data.kjId, that.data.joiner);
-          that.getKanjiaInfoMyHelp(that.data.kjId, that.data.joiner);
+      success: function(res) {
+        that.data.goodsDetail = res.data.data;
+        if (res.data.data.basicInfo.videoId) {
+          that.getVideoSrc(res.data.data.basicInfo.videoId);
         }
+        that.setData({
+          goodsDetail:res.data.data
+        });
+        WxParse.wxParse('article', 'html', res.data.data.content, that, 5);
       }
     })
+    this.getKanjiaInfo(e.kjId, e.joiner);
+    this.getKanjiaInfoMyHelp(e.kjId, e.joiner);
   },
   onShareAppMessage: function () {
     var that = this;

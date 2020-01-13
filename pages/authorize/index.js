@@ -68,15 +68,8 @@ Page({
     if (!e.detail.userInfo){
       return;
     }
-    if (app.globalData.isConnected) {
-      wx.setStorageSync('userInfo', e.detail.userInfo)
-      this.login();
-    } else {
-      wx.showToast({
-        title: '当前无网络',
-        icon: 'none',
-      })
-    }
+    wx.setStorageSync('userInfo', e.detail.userInfo)
+    this.login();
   },
   login: function () {
     let that = this;
@@ -132,23 +125,18 @@ Page({
     })
   },
   registerUser: function () {
-    let that = this;
+    var that = this;
     wx.login({
       success: function (res) {
-        let code = res.code; // 微信登录接口返回的 code 参数，下面注册接口需要用到
+        var code = res.code; // 微信登录接口返回的 code 参数，下面注册接口需要用到
         wx.getUserInfo({
           success: function (res) {
-            let iv = res.iv;
-            let encryptedData = res.encryptedData;
-            let referrer = '' // 推荐人
-            let referrer_storge = wx.getStorageSync('referrer');
-            if (referrer_storge) {
-              referrer = referrer_storge;
-            }
+            var iv = res.iv;
+            var encryptedData = res.encryptedData;
             // 下面开始调用注册接口
             wx.request({
               url: 'https://api.it120.cc/' + app.globalData.subDomain + '/user/wxapp/register/complex',
-              data: { code: code, encryptedData: encryptedData, iv: iv, referrer: referrer }, // 设置请求的 参数
+              data: { code: code, encryptedData: encryptedData, iv: iv }, // 设置请求的 参数
               success: (res) => {
                 wx.hideLoading();
                 that.login();
