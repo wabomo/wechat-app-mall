@@ -1,60 +1,84 @@
-//index.js
-//获取应用实例
-var app = getApp()
+const app = getApp()
+const WXAPI = require('apifm-wxapi')
+const AUTH = require('../../utils/auth')
 
 Page({
   data: {
+    wxlogin: true,
+
     totalScoreToPay: 0,
-    goodsList:[],
-    isNeedLogistics:0, // 是否需要物流信息
-    allGoodsPrice:0,
-    yunPrice:0,
-    allGoodsAndYunPrice:0,
-    goodsJsonStr:"",
-    orderType:"", //订单类型，购物车下单或立即支付下单，默认是购物车，
-    pingtuanOpenId:undefined, //拼团的话记录团号
+    goodsList: [],
+    isNeedLogistics: 0, // 是否需要物流信息
+    allGoodsPrice: 0,
+    yunPrice: 0,
+    allGoodsAndYunPrice: 0,
+    goodsJsonStr: "",
+    orderType: "", //订单类型，购物车下单或立即支付下单，默认是购物车，
+    pingtuanOpenId: undefined, //拼团的话记录团号
 
     hasNoCoupons: true,
     coupons: [],
-    youhuijine:0, //优惠券金额
-    curCoupon:null // 当前选择使用的优惠券
+    youhuijine: 0, //优惠券金额
+    curCoupon: null, // 当前选择使用的优惠券
+    allowSelfCollection: '0', // 是否允许到店自提
+    peisongType: 'kd', // 配送方式 kd,zq 分别表示快递/到店自取
+    remark: ''
   },
-  onShow : function () {
-    var that = this;
-    var shopList = [];
+  onShow(){
+    AUTH.checkHasLogined().then(isLogined => {
+      if (isLogined) {
+        this.doneShow()
+      } else {
+        this.setData({
+          wxlogin: isLogined
+        })
+      }
+    })
+  },
+  async doneShow() {
+    let allowSelfCollection = wx.getStorageSync('ALLOW_SELF_COLLECTION')
+    if (!allowSelfCollection || allowSelfCollection != '1') {
+      allowSelfCollection = '0'
+      this.data.peisongType = 'kd'
+    }
+    let shopList = [];
+    const token = wx.getStorageSync('token')
     //立即购买下单
-    if ("buyNow"==that.data.orderType){
+    if ("buyNow" == this.data.orderType) {
       var buyNowInfoMem = wx.getStorageSync('buyNowInfo');
-      that.data.kjId = buyNowInfoMem.kjId;
+      this.data.kjId = buyNowInfoMem.kjId;
       if (buyNowInfoMem && buyNowInfoMem.shopList) {
         shopList = buyNowInfoMem.shopList
       }
-    }else{
+    } else {
       //购物车下单
-      var shopCarInfoMem = wx.getStorageSync('shopCarInfo');
-      that.data.kjId = shopCarInfoMem.kjId;
-      if (shopCarInfoMem && shopCarInfoMem.shopList) {
-        // shopList = shopCarInfoMem.shopList
-        shopList = shopCarInfoMem.shopList.filter(entity => {
-          return entity.active;
-        });
+      const res = await WXAPI.shippingCarInfo(token)
+      if (res.code == 0) {
+        shopList = res.data.items
       }
     }
-    that.setData({
-      goodsList: shopList,
-    });
-    that.initShippingAddress();
-  },
-
-  onLoad: function (e) {
     this.setData({
-      isNeedLogistics: 1,
-      orderType: e.orderType,
-      pingtuanOpenId: e.pingtuanOpenId
+      goodsList: shopList,
+      allowSelfCollection: allowSelfCollection,
+      peisongType: this.data.peisongType
     });
+    this.initShippingAddress()
   },
 
-  getDistrictId : function (obj, aaa){
+  onLoad(e) {
+    let _data = {
+      isNeedLogistics: 1
+    }
+    if (e.orderType) {
+      _data.orderType = e.orderType
+    }
+    if (e.pingtuanOpenId) {
+      _data.pingtuanOpenId = e.pingtuanOpenId
+    }
+    this.setData(_data);
+  },
+
+  getDistrictId: function (obj, aaa) {
     if (!obj) {
       return "";
     }
@@ -63,20 +87,34 @@ Page({
     }
     return aaa;
   },
-
-  createOrder:function (e) {
-    wx.showLoading();
+  remarkChange(e){
+    this.data.remark = e.detail.value
+  },
+  goCreateOrder(){
+    wx.requestSubscribeMessage({
+      tmplIds: ['ITVuuD_cwYN-5BjXne8cSktDo43xetj0u-lpvFZEQQs',
+        'dw9Tzh9r0sw7Gjab0ovQJx3bP3gdXmF_FZvpnxPd6hc'],
+      success(res) {
+        
+      },
+      fail(e) {
+        console.error(e)
+      },
+      complete: (e) => {
+        this.createOrder(true)
+      },
+    })
+  },
+  createOrder: function (e) {
     var that = this;
     var loginToken = wx.getStorageSync('token') // 用户登录 token
-    var remark = ""; // 备注信息
-    if (e) {
-      remark = e.detail.value.remark; // 备注信息
-    }
+    var remark = this.data.remark; // 备注信息
 
-    var postData = {
+    let postData = {
       token: loginToken,
       goodsJsonStr: that.data.goodsJsonStr,
-      remark: remark
+      remark: remark,
+      peisongType: that.data.peisongType
     };
     if (that.data.kjId) {
       postData.kjid = that.data.kjId
@@ -84,7 +122,7 @@ Page({
     if (that.data.pingtuanOpenId) {
       postData.pingtuanOpenId = that.data.pingtuanOpenId
     }
-    if (that.data.isNeedLogistics > 0) {
+    if (that.data.isNeedLogistics > 0 && postData.peisongType == 'kd') {
       if (!that.data.curAddressData) {
         wx.hideLoading();
         wx.showModal({
@@ -94,15 +132,17 @@ Page({
         })
         return;
       }
-      postData.provinceId = that.data.curAddressData.provinceId;
-      postData.cityId = that.data.curAddressData.cityId;
-      if (that.data.curAddressData.districtId) {
-        postData.districtId = that.data.curAddressData.districtId;
-      }
-      postData.address = that.data.curAddressData.address;
-      postData.linkMan = that.data.curAddressData.linkMan;
-      postData.mobile = that.data.curAddressData.mobile;
-      postData.code = that.data.curAddressData.code;
+      if (postData.peisongType == 'kd') {
+        postData.provinceId = that.data.curAddressData.provinceId;
+        postData.cityId = that.data.curAddressData.cityId;
+        if (that.data.curAddressData.districtId) {
+          postData.districtId = that.data.curAddressData.districtId;
+        }
+        postData.address = that.data.curAddressData.address;
+        postData.linkMan = that.data.curAddressData.linkMan;
+        postData.mobile = that.data.curAddressData.mobile;
+        postData.code = that.data.curAddressData.code;
+      }      
     }
     if (that.data.curCoupon) {
       postData.couponId = that.data.curCoupon.id;
@@ -111,95 +151,65 @@ Page({
       postData.calculate = "true";
     }
 
+    WXAPI.orderCreate(postData).then(function (res) {
+      if (res.code != 0) {
+        wx.showModal({
+          title: '错误',
+          content: res.msg,
+          showCancel: false
+        })
+        return;
+      }
 
-    wx.request({
-      url: 'https://api.it120.cc/'+ app.globalData.subDomain +'/order/create',
-      method:'POST',
-      header: {
-        'content-type': 'application/x-www-form-urlencoded'
-      },
-      data: postData, // 设置请求的 参数
-      success: (res) =>{
-        wx.hideLoading();
-        if (res.data.code != 0) {
-          wx.showModal({
-            title: '错误',
-            content: res.data.msg,
-            showCancel: false
-          })
-          return;
-        }
-
-        if (e && "buyNow" != that.data.orderType) {
-          // 清空购物车数据
-          wx.removeStorageSync('shopCarInfo');
-        }
-        if (!e) {
-          that.setData({
-            totalScoreToPay: res.data.data.score,
-            isNeedLogistics: res.data.data.isNeedLogistics,
-            allGoodsPrice: res.data.data.amountTotle,
-            allGoodsAndYunPrice: res.data.data.amountLogistics + res.data.data.amountTotle,
-            yunPrice: res.data.data.amountLogistics
-          });
-          that.getMyCoupons();
-          return;
-        }
-        // 配置模板消息推送
-        var postJsonString = {};
-        postJsonString.keyword1 = { value: res.data.data.dateAdd, color: '#173177' }
-        postJsonString.keyword2 = { value: res.data.data.amountReal + '元', color: '#173177' }
-        postJsonString.keyword3 = { value: res.data.data.orderNumber, color: '#173177' }
-        postJsonString.keyword4 = { value: '订单已关闭', color: '#173177' }
-        postJsonString.keyword5 = { value: '您可以重新下单，请在30分钟内完成支付', color:'#173177'}
-        app.sendTempleMsg(res.data.data.id, -1,
-          'mGVFc31MYNMoR9Z-A9yeVVYLIVGphUVcK2-S2UdZHmg', e.detail.formId,
-          'pages/index/index', JSON.stringify(postJsonString));
-        postJsonString = {};
-        postJsonString.keyword1 = { value: '您的订单已发货，请注意查收', color: '#173177' }
-        postJsonString.keyword2 = { value: res.data.data.orderNumber, color: '#173177' }
-        postJsonString.keyword3 = { value: res.data.data.dateAdd, color: '#173177' }
-        app.sendTempleMsg(res.data.data.id, 2,
-          'Arm2aS1rsklRuJSrfz-QVoyUzLVmU2vEMn_HgMxuegw', e.detail.formId,
-          'pages/order-details/index?id=' + res.data.data.id, JSON.stringify(postJsonString));
-        // 下单成功，跳转到订单管理界面
-        wx.redirectTo({
-          url: "/pages/order-list/index"
+      if (e && "buyNow" != that.data.orderType) {
+        // 清空购物车数据
+        WXAPI.shippingCarInfoRemoveAll(loginToken)
+      }
+      if (!e) {
+        that.setData({
+          totalScoreToPay: res.data.score,
+          isNeedLogistics: res.data.isNeedLogistics,
+          allGoodsPrice: res.data.amountTotle,
+          allGoodsAndYunPrice: res.data.amountLogistics + res.data.amountTotle,
+          yunPrice: res.data.amountLogistics
         });
+        that.getMyCoupons();
+        return;
       }
+      // 下单成功，跳转到订单管理界面
+      wx.redirectTo({
+        url: "/pages/order-list/index"
+      });
     })
   },
-  initShippingAddress: function () {
-    var that = this;
-    wx.request({
-      url: 'https://api.it120.cc/'+ app.globalData.subDomain +'/user/shipping-address/default',
-      data: {
-        token: wx.getStorageSync('token')
-      },
-      success: (res) =>{
-        if (res.data.code == 0) {
-          that.setData({
-            curAddressData:res.data.data
-          });
-        }else{
-          that.setData({
-            curAddressData: null
-          });
-        }
-        that.processYunfei();
-      }
-    })
+  async initShippingAddress() {
+    const res = await WXAPI.defaultAddress(wx.getStorageSync('token'))
+    if (res.code == 0) {
+      this.setData({
+        curAddressData: res.data.info
+      });
+    } else {
+      this.setData({
+        curAddressData: null
+      });
+    }
+    this.processYunfei();
   },
-  processYunfei: function () {
-    var that = this;
+  processYunfei() {
     var goodsList = this.data.goodsList;
     var goodsJsonStr = "[";
     var isNeedLogistics = 0;
     var allGoodsPrice = 0;
 
+
+    let inviter_id = 0;
+    let inviter_id_storge = wx.getStorageSync('referrer');
+    if (inviter_id_storge) {
+      inviter_id = inviter_id_storge;
+    }
     for (let i = 0; i < goodsList.length; i++) {
       let carShopBean = goodsList[i];
-      if (carShopBean.logistics) {
+      if (carShopBean.logistics || carShopBean.logisticsId) {
         isNeedLogistics = 1;
       }
       allGoodsPrice += carShopBean.price * carShopBean.number;
@@ -208,57 +218,50 @@ Page({
       if (i > 0) {
         goodsJsonStrTmp = ",";
       }
-
-
-      let inviter_id = 0;
-      let inviter_id_storge = wx.getStorageSync('inviter_id_' + carShopBean.goodsId);
-      if (inviter_id_storge) {
-        inviter_id = inviter_id_storge;
+      if (carShopBean.sku && carShopBean.sku.length > 0) {
+        let propertyChildIds = ''
+        carShopBean.sku.forEach(option => {
+          propertyChildIds = propertyChildIds + ',' + option.optionId + ':' + option.optionValueId
+        })
+        carShopBean.propertyChildIds = propertyChildIds
       }
-
-
-      goodsJsonStrTmp += '{"goodsId":' + carShopBean.goodsId + ',"number":' + carShopBean.number + ',"propertyChildIds":"' + carShopBean.propertyChildIds + '","logisticsType":0, "inviter_id":' + inviter_id +'}';
+      goodsJsonStrTmp += '{"goodsId":' + carShopBean.goodsId + ',"number":' + carShopBean.number + ',"propertyChildIds":"' + carShopBean.propertyChildIds + '","logisticsType":0, "inviter_id":' + inviter_id + '}';
       goodsJsonStr += goodsJsonStrTmp;
 
 
     }
     goodsJsonStr += "]";
-    //console.log(goodsJsonStr);
-    that.setData({
+    this.setData({
       isNeedLogistics: isNeedLogistics,
       goodsJsonStr: goodsJsonStr
     });
-    that.createOrder();
+    this.createOrder();
   },
   addAddress: function () {
     wx.navigateTo({
-      url:"/pages/address-add/index"
+      url: "/pages/address-add/index"
     })
   },
   selectAddress: function () {
     wx.navigateTo({
-      url:"/pages/select-address/index"
+      url: "/pages/select-address/index"
     })
   },
   getMyCoupons: function () {
     var that = this;
-    wx.request({
-      url: 'https://api.it120.cc/' + app.globalData.subDomain + '/discounts/my',
-      data: {
-        token: wx.getStorageSync('token'),
-        status:0
-      },
-      success: function (res) {
-        if (res.data.code == 0) {
-          var coupons = res.data.data.filter(entity => {
-            return entity.moneyHreshold <= that.data.allGoodsAndYunPrice;
+    WXAPI.myCoupons({
+      token: wx.getStorageSync('token'),
+      status: 0
+    }).then(function (res) {
+      if (res.code == 0) {
+        var coupons = res.data.filter(entity => {
+          return entity.moneyHreshold <= that.data.allGoodsAndYunPrice;
+        });
+        if (coupons.length > 0) {
+          that.setData({
+            hasNoCoupons: false,
+            coupons: coupons
           });
-          if (coupons.length > 0) {
-            that.setData({
-              hasNoCoupons: false,
-              coupons: coupons
-            });
-          }
         }
       }
     })
@@ -268,7 +271,7 @@ Page({
     if (selIndex == -1) {
       this.setData({
         youhuijine: 0,
-        curCoupon:null
+        curCoupon: null
       });
       return;
     }
@@ -277,5 +280,23 @@ Page({
       youhuijine: this.data.coupons[selIndex].money,
       curCoupon: this.data.coupons[selIndex]
     });
-  }
+  },
+  radioChange (e) {
+    this.setData({
+      peisongType: e.detail.value
+    })
+  },
+  cancelLogin() {
+    wx.navigateBack()
+  },
+  processLogin(e) {
+    if (!e.detail.userInfo) {
+      wx.showToast({
+        title: '已取消',
+        icon: 'none',
+      })
+      return;
+    }
+    AUTH.register(this);
+  },
 })
